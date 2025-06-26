@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int        @id @default(autoincrement())
+  name     String
+  email    String     @unique
+  password String
+  role     String     // 'superadmin', 'admin', 'user'
+  tasks    Task[]
+  taskLoads TaskLoadUser[]  // muda de TaskLoad[] para TaskLoadUser[]
+}
+
+
+model Van {
+  id                 Int                @id @default(autoincrement())
+  licensePlate       String             @unique
+  materialInstances  MaterialInstance[]
+  tasks              Task[]
+  taskLoads          TaskLoad[]        
+}
+
+model Material {
+  id          Int                 @id @default(autoincrement())
+  name        String
+  category    String
+  subcategory String
+  qrCode      String   @db.Text
+  parentId    Int?       
+  parent      Material?          @relation("MaterialToMaterial", fields: [parentId], references: [id])
+  children    Material[]         @relation("MaterialToMaterial")
+  instances   MaterialInstance[]
+  taskLoadMaterials TaskLoadMaterial[] 
+}
+
+model MaterialInstance {
+  id           Int      @id @default(autoincrement())
+  material     Material @relation(fields: [materialId], references: [id])
+  materialId   Int
+  van          Van?     @relation(fields: [vanId], references: [id])
+  vanId        Int?
+  task         Task?    @relation(fields: [taskId], references: [id])
+  taskId       Int?
+  isLoaded     Boolean  @default(false)
+  conditionOk  Boolean  @default(false)
+}
+
+
+
+model Task {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      Int
+  van         Van?     @relation(fields: [vanId], references: [id])
+  vanId       Int?
+  title       String
+  description String?
+  date        DateTime
+  scheduledAt String?   // Confirmar se deve ser String ou DateTime?
+  materialInstances MaterialInstance[] // 👈 Inverso de task em MaterialInstance
+  taskLoads   TaskLoad[]               // 👈 Inverso de task em TaskLoad
+}
+model TaskLoad {
+  id               Int               @id @default(autoincrement())
+  task             Task              @relation(fields: [taskId], references: [id])
+  taskId           Int
+  van              Van               @relation(fields: [vanId], references: [id])
+  vanId            Int
+  createdAt        DateTime          @default(now())
+  materialInstances TaskLoadMaterial[]
+  users            TaskLoadUser[]
+}
+
+
+model TaskLoadMaterial {
+  id              Int              @id @default(autoincrement())
+  taskLoad        TaskLoad         @relation(fields: [taskLoadId], references: [id])
+  taskLoadId      Int
+  material        Material         @relation(fields: [materialId], references: [id])
+  materialId      Int
+  quantity        Int              @default(1)
+}
+
+model TaskLoadUser {
+  taskLoadId Int
+  userId     Int
+  taskLoad   TaskLoad  @relation(fields: [taskLoadId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+  @@id([taskLoadId, userId])
+}
