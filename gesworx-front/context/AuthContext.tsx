@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiClient } from '@/lib/api';
 
 export type UserRole = 'superadmin' | 'admin' | 'user';
 
@@ -13,6 +14,7 @@ export interface User {
   avatar?: string;
   isActive: boolean;
   createdAt: Date;
+  token?: string;
 }
 
 interface AuthContextType {
@@ -31,38 +33,6 @@ const AuthContext = createContext<AuthContextType>({
   hasPermission: () => false,
 });
 
-// Mock user data for demo
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@gesworx.com',
-    name: 'Super Admin',
-    role: 'superadmin',
-    avatar: 'SA',
-    isActive: true,
-    createdAt: new Date(),
-  },
-  {
-    id: '2',
-    email: 'manager@gesworx.com',
-    name: 'Warehouse Manager',
-    role: 'admin',
-    avatar: 'WM',
-    isActive: true,
-    createdAt: new Date(),
-  },
-  {
-    id: '3',
-    email: 'worker@gesworx.com',
-    name: 'Field Worker',
-    role: 'user',
-    assignedVan: 'ABC-123',
-    avatar: 'FW',
-    isActive: true,
-    createdAt: new Date(),
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,25 +41,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for stored session
     const storedUser = localStorage.getItem('gesworx_user');
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      try {
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+        if (userData.token) {
+          apiClient.setToken(userData.token);
+        }
+      } catch (error) {
+        console.error('Error parsing stored user:', error);
+        localStorage.removeItem('gesworx_user');
+      }
     }
     setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Mock authentication
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser && password === 'password') {
-      setUser(foundUser);
-      localStorage.setItem('gesworx_user', JSON.stringify(foundUser));
+    try {
+      const response = await apiClient.login(email, password);
+      
+      if (response.error || !response.data) {
+        console.error('Login failed:', response.error);
+        return false;
+      }
+
+      const { token, user: userData } = response.data;
+      
+      const userWithToken: User = {
+        id: userData.id.toString(),
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        avatar: userData.name.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+        isActive: true,
+        createdAt: new Date(),
+        token,
+      };
+
+      setUser(userWithToken);
+      apiClient.setToken(token);
+      localStorage.setItem('gesworx_user', JSON.stringify(userWithToken));
+      
       return true;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('gesworx_user');
+    apiClient.setToken('');
   };
 
   const hasPermission = (permission: string): boolean => {
